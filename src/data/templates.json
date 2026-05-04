@@ -1,0 +1,20 @@
+[
+  {
+    "id": "hook_single",
+    "type": "single",
+    "structure": "hook + insight + CTA",
+    "example": "Hook kuat (pertanyaan/fakta mengejutkan) → 1-2 kalimat insight → pertanyaan reflektif"
+  },
+  {
+    "id": "thread_reveal",
+    "type": "thread",
+    "structure": "hook → build-up → reveal → koneksi masa kini → refleksi",
+    "example": "Tweet 1: Hook. Tweet 2-4: Fakta/data. Tweet 5-6: Koneksi ke hari ini. Tweet 7: Pertanyaan penutup"
+  },
+  {
+    "id": "thread_spiritual",
+    "type": "thread",
+    "structure": "ayat/hadis → konteks historis → paralel modern → amal",
+    "example": "Tweet 1: Kutipan. Tweet 2-3: Konteks. Tweet 4-5: Relevansi kini. Tweet 6-7: Langkah praktis"
+  }
+]
