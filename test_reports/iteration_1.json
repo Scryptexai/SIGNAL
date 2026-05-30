@@ -1,0 +1,43 @@
+{
+  "summary": "Full end-to-end testing of SIGNAL on-chain intelligence dashboard. Backend: 18/18 pytest tests pass (health, intelligence catalog/entity/address/search, transactions transfers/swaps, tokens trending/holders/flow graceful, content Claude analysis/social/alert). Frontend: all 3 tabs (Intelligence/Transactions/Tokens) load, dark theme is legible, global search resolves entity ('a16z') and address (Vitalik), entity chips switch entity, AI panel generates analysis/social/alert content via Claude with real output, holdings/chain-allocation/counterparties tables populate, trending/holders/flow render. Only intermittent issue observed is upstream Arkham 500s on /swaps and /flow (consistent with known flakiness) — backend handles them with clean 5xx not crashes.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/transactions/swaps", "issue": "Upstream Arkham /swaps occasionally returns 500 (same behavior as /flow). Backend bubbles a clean error, but no graceful 502 wrapper like /tokens/flow. Frontend shows raw 'Arkham API error 500' to user. Consider treating /swaps and /transfers similarly to /flow (return 502 with friendly detail) so the UI can surface a graceful unavailable state."},
+      {"endpoint": "/api/content/generate", "issue": "On one run during testing the analysis mode returned 502 because uvicorn auto-reload was triggered by creating a file under /app/backend/tests/. Not a product bug, but worth noting that adding any file under /app/backend triggers a reload that kills in-flight Claude requests. Consider excluding tests/ from uvicorn --reload-dir."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Transactions → swaps", "issue": "When Arkham upstream returns 500 (flaky), the UI shows a raw 'Arkham API error 500 for /swaps: Internal Server Error' txn-error block. Same params work on retry. Suggest mirroring /flow's graceful-502 handling so user sees 'Swap data temporarily unavailable, retry' style messaging.", "affected_selectors": ["[data-testid=\"txn-error\"]", "[data-testid=\"swaps-table\"]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Wrap /api/transactions/swaps and /api/transactions/transfers in the same graceful-502 pattern used by /api/tokens/flow so flaky upstream 500s surface as 'temporarily unavailable' to the UI instead of a 500-passthrough.",
+    "(Optional) Exclude /app/backend/tests from uvicorn --reload-dirs (or use --reload-exclude tests/*) so long-running Claude requests aren't aborted by test-file writes during development."
+  ],
+  "critical_code_review_comments": [
+    "server.py uses @app.on_event('startup') which is deprecated in newer FastAPI/Starlette; consider migrating to lifespan context handler.",
+    "CORS is wide-open (allow_origins=['*'] with allow_credentials=True) — acceptable for this internal demo but flagged for awareness.",
+    "Status endpoint pings Arkham (get_token_trending) on every /api/status poll (every 30s from FE) — fine now, but could rate-limit Arkham under load; consider caching the last status for ~10s.",
+    "No retry/backoff on flaky Arkham endpoints (/swaps, /flow). A single short retry would dramatically improve UX given the upstream flakiness."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (created)",
+    "/app/test_reports/iteration_1.json (created)",
+    "/app/test_reports/pytest/pytest_results.xml (created)"
+  ],
+  "success_rate": {"backend": "100% (18/18 pytest)", "frontend": "100% of critical flows; 1 transient upstream-500 surfaced on /swaps (works on retry)"},
+  "test_credentials": "None — app has no auth (confirmed in request).",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is solid; Arkham /swaps and /flow are genuinely flaky upstream. Re-running the same request usually succeeds. Frontend testids are comprehensive and reliable: nav-intelligence, nav-transactions, nav-tokens, entity-chip-{slug}, global-search-input, global-search-button, holdings-table, chain-allocation, counterparties-table, ai-analysis-panel, ai-mode-{analysis|social|alert}, ai-generate-button, ai-output, txn-tab-{transfers|swaps}, run-query-button, transfers-table, swaps-table, trending-list, token-select-{slug}, holders-table, flow-list, flow-unavailable, arkham-status-badge. AI panel takes 10–20s to return Claude output; wait at least 20s. Default entity is binance.",
+  "rca of the issue": "Swap UI failure: upstream Arkham https://api.arkm.com/swaps returns intermittent 500. Backend (routers/transactions.py) re-raises the error message. Backend pytest for the same params passed in the same session, and a follow-up curl returned 200 with data. Reproduction: hit /api/transactions/swaps?base=wintermute&usdGte=10000&timeLast=24h repeatedly — roughly 10-20% fail with Arkham 500. Mitigation: (a) catch upstream 500/timeouts in the swaps/transfers handlers and return 502 with {'detail': 'Arkham temporarily unavailable'} like tokens/flow does, or (b) add a single retry-with-backoff in services/arkham.py for the swaps/flow paths."
+}
