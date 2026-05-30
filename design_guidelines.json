@@ -1,0 +1,83 @@
+{
+  "theme": "DARK",
+  "archetype": "4 (Swiss & High-Contrast Dark Variant)",
+  "vibe": "Command-center focus, objective, rigid, functional. A Bloomberg Terminal for crypto intelligence.",
+  "colors": {
+    "background": "#09090B",
+    "surface": "#18181B",
+    "surface_hover": "#27272A",
+    "border": "#27272A",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#A1A1AA",
+    "primary": "#007AFF",
+    "accent_ai": "#00F0FF",
+    "status_positive": "#22C55E",
+    "status_negative": "#FF3B30",
+    "warning": "#FFCC00"
+  },
+  "typography": {
+    "font_family_headings": "Outfit, sans-serif",
+    "font_family_body": "IBM Plex Mono, monospace",
+    "hierarchy": {
+      "h1": "text-4xl tracking-tighter font-black",
+      "h2": "text-2xl tracking-tight font-bold",
+      "h3": "text-lg tracking-tight font-semibold",
+      "h4": "text-base uppercase tracking-[0.2em] font-light",
+      "body": "text-sm leading-relaxed",
+      "data": "text-sm font-mono tracking-tight",
+      "labels": "text-xs uppercase tracking-[0.2em]"
+    }
+  },
+  "spacing_and_layout": {
+    "grid_system": "MODE B: The Control Room Grid (grid-cols-1 md:grid-cols-4 lg:grid-cols-12 gap-4 or gap-6). Dense, utilitarian.",
+    "container_padding": "p-6",
+    "alignment": "Optical alignment. Left-align dense content and tables. Right-align numbers.",
+    "surface_style": "Grid Borders (The 'Technical' Look). Expose the skeleton. border-collapse, border-r border-b border-border/40."
+  },
+  "components": {
+    "cards": "Flat background, 1px subtle border, sharp corners (rounded-none or max rounded-sm). No shadows. On hover: border color darkens or brightens to primary.",
+    "tables": "Dense rows, sticky headers, monospaced numbers (IBM Plex Mono). High contrast hover states (hover:bg-zinc-800 hover:text-white).",
+    "buttons": "Sharp edges. Primary: bg-[#007AFF] text-white hover:bg-[#005bb5]. AI Action: Use 'Tracing Beam' border effect or neon glow.",
+    "search": "Command palette style, large input, stark border, keyboard shortcut hints (CMD+K)."
+  },
+  "specific_views": {
+    "dashboard_layout": "Sidebar navigation + Top Command Bar + Grid of Widgets.",
+    "ai_analysis_panel": "Use a subtle '#00F0FF/10' background tint with 'Tracing Beam' border. Prefix text with AI icon. Claude-generated text in clear, readable sans-serif (Outfit).",
+    "transactions_feed": "Scrolling or paginated list. Positive values in Green, negative in Red. Monospace fonts for hashes.",
+    "token_analytics": "Bento style mini-charts (using Recharts). Line charts for trends. No fill, just crisp 2px stroke lines."
+  },
+  "icons_and_assets": {
+    "icon_library": "@phosphor-icons/react",
+    "installation_command": "yarn add @phosphor-icons/react",
+    "image_urls": [
+      {
+        "url": "https://static.prod-images.emergentagent.com/jobs/076e1303-ab74-415e-aa3a-3429278b255b/images/df31fb527605176168fdbc8a5f84133ebd412888894e18c888931fbbded22be4.png",
+        "description": "Tactical grid background, obsidian black, minimalist intelligence command center aesthetic",
+        "category": "background_abstract"
+      },
+      {
+        "url": "https://static.prod-images.emergentagent.com/jobs/076e1303-ab74-415e-aa3a-3429278b255b/images/aebf3e9e0c02b82ab360e2e23872e01849435d2084e81457c18724f44fab7df1.png",
+        "description": "Minimalist high-tech AI glowing core icon, cyan and obsidian",
+        "category": "ai_avatar_icon"
+      }
+    ]
+  },
+  "interaction_and_motion": {
+    "hover_states": "Crisp, instantaneous color changes. No mushy easing. 0.1s transitions.",
+    "loading": "Terminal-style ASCII loaders or pure CSS fast-blinking cursors.",
+    "data_updates": "Flash green/red on cell update (Bloomberg style)."
+  },
+  "accessibility": {
+    "contrast": "Ensure APCA contrast on all data points. Never gray-on-gray.",
+    "test_ids": "All interactive elements MUST have data-testid attributes (e.g., data-testid='entity-search-input')."
+  },
+  "instructions_to_main_agent": [
+    "Build a robust React dashboard. Use HTML/Tailwind for structural layout and Shadcn for complex interactives (Tables, Select, Dialog).",
+    "Do NOT use 'Inter'. Install and use 'Outfit' and 'IBM Plex Mono' via Google Fonts in index.html or layout wrapper.",
+    "Implement 'Grid Borders' look: expose the structural grid between dashboard widgets instead of floating rounded cards.",
+    "For the AI Analysis Panel, highlight it visually (use the cyan accent or tracing beam) to separate it from pure data.",
+    "Make sure the Arkham API connection status indicator is prominent (Top right or Bottom left).",
+    "Remember to add 'data-testid' to all interactive components.",
+    "Ensure UI looks dense and data-heavy, suitable for on-chain intelligence workflows."
+  ]
+}
