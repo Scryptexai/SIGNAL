@@ -95,7 +95,8 @@ def _build_prompt(data_type: str, d, tone: str, output_type: str) -> str:
 def _tweet_count(content: str, output_type: str) -> int:
     if output_type != "thread":
         return 1
-    markers = re.findall(r"\(\s*\d+\s*/", content)
+    # match numbered markers at line start, with or without parens: "(1/" or "1/"
+    markers = re.findall(r"(?:^|\n)\s*\(?\s*\d+\s*/", content)
     return max(1, len(markers))
 
 

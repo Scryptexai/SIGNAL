@@ -3,3 +3,9 @@ dist/
 .env
 src/data/posted.json
 *.log
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials

@@ -4,6 +4,8 @@ Adapted from the spec's `main.py` to the Emergent runtime: the backend runs on
 port 8001 with every route under the `/api` prefix; the React dashboard is served
 separately on port 3000.
 """
+import time
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -29,6 +31,7 @@ app.include_router(tokens.router, prefix="/api")
 app.include_router(content.router, prefix="/api")
 
 _AI_READY = bool(ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN)
+_status_cache = {"ts": 0.0, "arkham": "offline", "detail": None}
 
 
 @app.get("/api/")
@@ -38,11 +41,21 @@ async def root():
 
 @app.get("/api/status", response_model=StatusResponse)
 async def status():
-    """Live health check used by the dashboard's connection indicator."""
+    """Live health check (10s cache) used by the dashboard's connection indicator."""
+    now = time.time()
+    if now - _status_cache["ts"] < 10:
+        return StatusResponse(
+            arkham=_status_cache["arkham"],
+            ai=_AI_READY,
+            model=ANTHROPIC_MODEL,
+            detail=_status_cache["detail"],
+        )
     try:
         await arkham.get_token_trending()
+        _status_cache.update(ts=now, arkham="online", detail=None)
         return StatusResponse(arkham="online", ai=_AI_READY, model=ANTHROPIC_MODEL)
     except ArkhamError as exc:
+        _status_cache.update(ts=now, arkham="offline", detail=exc.message)
         return StatusResponse(
             arkham="offline", ai=_AI_READY, model=ANTHROPIC_MODEL, detail=exc.message
         )
