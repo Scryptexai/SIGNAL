@@ -7,6 +7,7 @@ NOTE: The original spec listed paths like `/intelligence/entity/arkham-signal`.
 Live probing confirmed the trailing path segment is actually the *entity slug*,
 so we interpolate `{slug}` into the path to get real results.
 """
+import asyncio
 from typing import Optional
 
 import httpx
@@ -20,27 +21,52 @@ class ArkhamClient:
         self.base_url = ARKHAM_BASE_URL.rstrip("/")
         self.headers = ARKHAM_HEADERS
 
-    async def _get(self, path: str, params: Optional[dict] = None, timeout: int = 20):
+    async def _get(
+        self,
+        path: str,
+        params: Optional[dict] = None,
+        timeout: int = 20,
+        retries: int = 2,
+    ):
+        """GET with a short retry/backoff for transient upstream failures.
+
+        Arkham occasionally returns 5xx / times out on heavy endpoints
+        (notably /swaps and /token/top_flow). Deterministic 4xx responses
+        (e.g. "entity not found") are surfaced immediately without retrying.
+        """
         url = f"{self.base_url}{path}"
         print(f"[Arkham] GET {url} params={params}")
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.get(url, headers=self.headers, params=params)
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail=f"Arkham API timed out: {path}")
-        except httpx.RequestError as exc:
-            raise HTTPException(status_code=502, detail=f"Arkham API connection error: {exc}")
+        last_detail = f"Arkham API failed: {path}"
 
-        if resp.status_code >= 400:
-            message = self._extract_message(resp)
-            raise HTTPException(
-                status_code=502,
-                detail=f"Arkham API error {resp.status_code} for {path}: {message}",
-            )
-        try:
-            return resp.json()
-        except ValueError:
-            raise HTTPException(status_code=502, detail=f"Arkham API returned non-JSON for {path}")
+        for attempt in range(retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    resp = await client.get(url, headers=self.headers, params=params)
+            except httpx.TimeoutException:
+                last_detail = f"Arkham API timed out: {path}"
+            except httpx.RequestError as exc:
+                last_detail = f"Arkham API connection error: {exc}"
+            else:
+                if resp.status_code < 400:
+                    try:
+                        return resp.json()
+                    except ValueError:
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"Arkham API returned non-JSON for {path}",
+                        )
+                message = self._extract_message(resp)
+                detail = f"Arkham API error {resp.status_code} for {path}: {message}"
+                # 4xx (except 429 rate-limit) are deterministic -> do not retry
+                if resp.status_code < 500 and resp.status_code != 429:
+                    raise HTTPException(status_code=502, detail=detail)
+                last_detail = detail
+
+            if attempt < retries:
+                await asyncio.sleep(0.6 * (attempt + 1))
+                print(f"[Arkham] transient failure, retry {attempt + 1}/{retries} for {path}")
+
+        raise HTTPException(status_code=502, detail=last_detail)
 
     @staticmethod
     def _extract_message(resp) -> str:

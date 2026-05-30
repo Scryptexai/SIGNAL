@@ -188,10 +188,14 @@ export default function TransactionsView({ catalog }) {
             {error ? (
               <div
                 data-testid="txn-error"
-                className="flex items-center gap-2 border border-neg/40 bg-neg/10 p-3 text-xs text-neg"
+                className="border border-warn/40 bg-warn/10 p-3 text-xs text-warn"
               >
-                <WarningCircle size={14} weight="fill" />
-                {error}
+                <div className="flex items-center gap-2 font-semibold">
+                  <WarningCircle size={14} weight="fill" /> Feed temporarily unavailable
+                </div>
+                <div className="mt-1 text-dim">
+                  Arkham upstream hiccupped for these filters. Press RUN QUERY to retry.
+                </div>
               </div>
             ) : loading ? (
               <p className="text-xs text-dim">Loading feed…</p>

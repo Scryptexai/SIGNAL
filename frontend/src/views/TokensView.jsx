@@ -31,12 +31,17 @@ const flattenHolders = (holders) => {
 const flattenFlow = (flow) => {
   if (!Array.isArray(flow)) return [];
   return flow
-    .map((f) => ({
-      name: partyName(f.address) || f.name,
-      chain: f.address?.chain || f.chain,
-      usd: firstNum(f, ["usd", "flowUSD", "netUSD", "volumeUSD", "inflowUSD", "outflowUSD", "value"]),
-      direction: f.flow || f.direction,
-    }))
+    .map((f) => {
+      const inUSD = Number(f.inUSD) || 0;
+      const outUSD = Number(f.outUSD) || 0;
+      return {
+        name: partyName(f.address) || f.name,
+        chain: f.address?.chain || f.chain,
+        net: inUSD - outUSD,
+        gross: inUSD + outUSD,
+      };
+    })
+    .sort((a, b) => b.gross - a.gross)
     .slice(0, 12);
 };
 
@@ -260,11 +265,16 @@ export default function TokensView({ catalog }) {
                 {flowRows.map((f, i) => (
                   <div
                     key={i}
-                    className="flex items-center justify-between border-t border-border/60 py-1.5 text-sm"
+                    className="flex items-center justify-between gap-2 border-t border-border/60 py-1.5 text-sm"
                   >
-                    <span className="truncate text-white">{f.name}</span>
-                    <span className="ml-2 shrink-0 font-mono text-dim">
-                      {f.usd != null ? usd(f.usd) : "—"}
+                    <span className="truncate text-white" title={f.name}>
+                      {f.name}
+                    </span>
+                    <span
+                      className={`shrink-0 font-mono ${f.net >= 0 ? "text-pos" : "text-neg"}`}
+                    >
+                      {f.net >= 0 ? "+" : "−"}
+                      {usd(Math.abs(f.net))}
                     </span>
                   </div>
                 ))}
