@@ -12,9 +12,11 @@ ARKHAM_API_KEY = os.environ.get("ARKHAM_API_KEY", "")
 ARKHAM_BASE_URL = os.environ.get("ARKHAM_BASE_URL", "https://api.arkm.com")
 ARKHAM_HEADERS = {"API-Key": ARKHAM_API_KEY}
 
-# --- Claude (Anthropic) via the Emergent Universal LLM key ---
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
-CLAUDE_MODEL = "claude-sonnet-4-6"
+# --- AI: MiMo (Anthropic-compatible Messages API) ---
+# Used for the dashboard analysis panel AND the X/Twitter content engine.
+ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "")
+ANTHROPIC_AUTH_TOKEN = os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "mimo-v2.5-pro")
 
 # Verified working entity slugs (probed live against api.arkm.com)
 ENTITY_SLUGS = {
@@ -47,4 +49,4 @@ CHAINS = [
 ]
 
 # Valid timeLast windows accepted by Arkham
-TIME_WINDOWS = ["1h", "24h", "7d", "30d"]
+TIME_WINDOWS = ["1h", "6h", "24h", "7d", "30d"]

@@ -1,0 +1,36 @@
+{
+  "summary": "ITERATION 2 — Full e2e verification of renamed routes (/api/intel/*, /api/txns/*) and MiMo (mimo-v2.5-pro) integration. Backend pytest 17/17 PASS (health, intel catalog/entity/address/search incl. graceful not-found, txns transfers/swaps/large normalized, tokens trending/holders/flow, content generate for whale_transfer+alpha_caller/thread, entity_profile+analyst/tweet, token_flow+degen/alert). Frontend: status badge shows 'Arkham ONLINE / AI READY' with model=mimo-v2.5-pro; default Intelligence (Binance) renders holdings/chain/counterparties; coinbase entity chip swaps entity; global search resolves both a16z entity and Vitalik address; 3 transaction tabs render (Whales default = live transfers table, Transfers, Swaps); Tokens view renders trending/holders/flow-list w/ 24h/7d toggles; AI panel with Tone + Output controls successfully generated real MiMo alert (196 chars · 1 tweet) with copy button — no errors anywhere.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py still uses deprecated @app.on_event('startup') — migrate to FastAPI lifespan context handler when convenient.",
+    "CORS allow_origins=['*'] with allow_credentials=True — acceptable for this internal demo but worth flagging.",
+    "/api/status pings Arkham (get_token_trending) on every poll (FE polls every 30s) — consider a ~10s in-memory cache to avoid hammering Arkham under multiple clients.",
+    "services/ai.py hard-codes timeout=90s and anthropic-version='2023-06-01' — fine, but consider exposing timeout via config so slow MiMo runs don't 502 the content endpoint.",
+    "routers/content.py: _tweet_count regex (\\(\\s*\\d+\\s*/) only matches '(1/' style markers; MiMo may also emit '1/' without parens — minor edge case for thread mode."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (rewritten for ITERATION 2 routes: /intel, /txns, /tokens, new content schema, MiMo model assertion)",
+    "/app/test_reports/iteration_2.json (created)",
+    "/app/test_reports/pytest/pytest_results.xml (refreshed)"
+  ],
+  "success_rate": {"backend": "100% (17/17 pytest)", "frontend": "100% of critical flows"},
+  "test_credentials": "None — app has no auth.",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iteration_2 routes are healthy. New schemas verified end-to-end: /api/status -> {arkham:'online', ai:true, model:'mimo-v2.5-pro'}; /api/intel/entity/{slug} -> {entity, balances, counterparties}; bogus slug returns graceful 200 {error:'not found', detail}; /api/intel/address/{addr} -> {profile, balances}; /api/intel/search?query=coin returns coinbase (local catalog match); /api/intel/search?query=<0xaddr> returns results[0].type='address'; /api/txns/{transfers,swaps,large} return normalized rows; /api/tokens/holders/<slug> caps at 20 rows w/ {entity_name,entity_type,balance,percentage,wallet_address,usd,chain}; /api/content/generate returns {content,tone,output_type,char_count,tweet_count}. MiMo emits a thinking block + text block; backend filters non-text — content is non-empty. Real MiMo output observed in alert mode: '🚨 ETH FLOW ALERT: 48.4M net inflow in 24h!...' (196 chars). Arkham retry/backoff is working — no flaky-500s surfaced this run. Default Transactions tab is Whales (live /api/txns/large, no filters). Testids unchanged from iteration_1 plus: txn-tab-whales, ai-tone-{analyst|alpha_caller|degen}, ai-output-{thread|tweet|alert}, ai-meta. AI generation typically returns in 5–15s; 60s polling loop is more than enough.",
+  "rca of the issue": "N/A — no failures."
+}

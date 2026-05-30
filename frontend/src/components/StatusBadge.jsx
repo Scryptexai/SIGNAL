@@ -2,7 +2,7 @@ import React from "react";
 
 export default function StatusBadge({ status }) {
   const online = status?.arkham === "online";
-  const claude = !!status?.claude;
+  const aiReady = !!status?.ai;
   return (
     <div
       data-testid="arkham-status-badge"
@@ -30,9 +30,9 @@ export default function StatusBadge({ status }) {
       </div>
       <span
         className="text-[10px] uppercase tracking-[0.18em] text-dim"
-        title="Claude AI engine"
+        title={status?.model || "AI engine"}
       >
-        AI <span className={claude ? "text-ai" : "text-neg"}>{claude ? "READY" : "OFF"}</span>
+        AI <span className={aiReady ? "text-ai" : "text-neg"}>{aiReady ? "READY" : "OFF"}</span>
       </span>
     </div>
   );

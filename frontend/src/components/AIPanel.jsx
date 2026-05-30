@@ -1,27 +1,54 @@
 import React, { useState } from "react";
-import { Sparkle, Copy, Check, WarningCircle } from "@phosphor-icons/react";
+import { Sparkle, Copy, Check, WarningCircle, XLogo } from "@phosphor-icons/react";
 import { generateContent, errMsg } from "../lib/api";
 
-const MODES = [
-  { id: "analysis", label: "Analysis" },
-  { id: "social", label: "Social" },
+const TONES = [
+  { id: "analyst", label: "Analyst" },
+  { id: "alpha_caller", label: "Alpha" },
+  { id: "degen", label: "Degen" },
+];
+const OUTPUTS = [
+  { id: "thread", label: "Thread" },
+  { id: "tweet", label: "Tweet" },
   { id: "alert", label: "Alert" },
 ];
 
-export default function AIPanel({ subject, data, disabled }) {
-  const [mode, setMode] = useState("analysis");
+function Choice({ value, current, onClick, testid, children }) {
+  return (
+    <button
+      data-testid={testid}
+      onClick={onClick}
+      className={`border px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] transition-colors duration-100 ${
+        current === value
+          ? "border-ai bg-ai/10 text-ai"
+          : "border-border text-dim hover:text-white"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function AIPanel({ dataType, rawData, subject, disabled }) {
+  const [tone, setTone] = useState("analyst");
+  const [output, setOutput] = useState("thread");
   const [loading, setLoading] = useState(false);
-  const [out, setOut] = useState("");
+  const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
   const run = async () => {
     setLoading(true);
     setError("");
-    setOut("");
+    setResult(null);
     try {
-      const res = await generateContent({ mode, subject, data });
-      setOut(res.content);
+      const res = await generateContent({
+        data_type: dataType,
+        raw_data: rawData,
+        tone,
+        output_type: output,
+      });
+      setResult(res);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -30,8 +57,9 @@ export default function AIPanel({ subject, data, disabled }) {
   };
 
   const copy = async () => {
+    if (!result) return;
     try {
-      await navigator.clipboard.writeText(out);
+      await navigator.clipboard.writeText(result.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch (e) {
@@ -40,46 +68,49 @@ export default function AIPanel({ subject, data, disabled }) {
   };
 
   return (
-    <section
-      data-testid="ai-analysis-panel"
-      className="border border-ai/30 bg-ai/[0.04]"
-    >
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-ai/20 px-4 py-2.5">
+    <section data-testid="ai-analysis-panel" className="border border-ai/30 bg-ai/[0.04]">
+      <header className="flex items-center justify-between gap-2 border-b border-ai/20 px-4 py-2.5">
         <div className="flex items-center gap-2">
           <Sparkle size={16} weight="fill" className="text-ai" />
           <h3 className="font-head text-[11px] uppercase tracking-[0.22em] text-ai">
-            AI Analysis · Claude
+            X / Twitter Engine
           </h3>
         </div>
-        <div className="flex gap-1">
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              data-testid={`ai-mode-${m.id}`}
-              onClick={() => setMode(m.id)}
-              className={`border px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] transition-colors duration-100 ${
-                mode === m.id
-                  ? "border-ai bg-ai/10 text-ai"
-                  : "border-border text-dim hover:text-white"
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+        <XLogo size={15} weight="bold" className="text-dim" />
       </header>
 
-      <div className="p-4">
+      <div className="space-y-3 p-4">
+        <div>
+          <div className="mb-1.5 text-[10px] uppercase tracking-[0.18em] text-dim">Tone</div>
+          <div className="flex gap-1">
+            {TONES.map((t) => (
+              <Choice key={t.id} value={t.id} current={tone} onClick={() => setTone(t.id)} testid={`ai-tone-${t.id}`}>
+                {t.label}
+              </Choice>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="mb-1.5 text-[10px] uppercase tracking-[0.18em] text-dim">Output</div>
+          <div className="flex gap-1">
+            {OUTPUTS.map((o) => (
+              <Choice key={o.id} value={o.id} current={output} onClick={() => setOutput(o.id)} testid={`ai-output-${o.id}`}>
+                {o.label}
+              </Choice>
+            ))}
+          </div>
+        </div>
+
         <button
           data-testid="ai-generate-button"
           onClick={run}
           disabled={disabled || loading}
-          className="mb-3 w-full border border-ai bg-ai/10 py-2.5 font-head text-sm font-semibold tracking-tight text-ai transition-colors hover:bg-ai/20 disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full border border-ai bg-ai/10 py-2.5 font-head text-sm font-semibold tracking-tight text-ai transition-colors hover:bg-ai/20 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {loading ? (
-            <span className="cursor-blink">ANALYZING ON-CHAIN DATA</span>
+            <span className="cursor-blink">GENERATING {output.toUpperCase()}</span>
           ) : (
-            `GENERATE ${mode.toUpperCase()} · ${(subject || "—").toUpperCase()}`
+            `GENERATE ${output.toUpperCase()}`
           )}
         </button>
 
@@ -93,30 +124,36 @@ export default function AIPanel({ subject, data, disabled }) {
           </div>
         )}
 
-        {out && (
-          <div className="relative">
-            <button
-              data-testid="ai-copy-button"
-              onClick={copy}
-              className="absolute right-0 top-0 flex items-center gap-1 border border-border bg-surface px-2 py-1 text-[10px] uppercase tracking-wider text-dim hover:text-white"
-            >
-              {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? "Copied" : "Copy"}
-            </button>
+        {result && (
+          <div>
+            <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.15em] text-dim">
+              <span data-testid="ai-meta">
+                {result.char_count} chars · {result.tweet_count} tweet
+                {result.tweet_count > 1 ? "s" : ""}
+              </span>
+              <button
+                data-testid="ai-copy-button"
+                onClick={copy}
+                className="flex items-center gap-1 border border-border bg-surface px-2 py-1 text-dim hover:text-white"
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
             <div
               data-testid="ai-output"
-              className="whitespace-pre-wrap pr-16 font-head text-sm leading-relaxed text-white/90"
+              className="max-h-[420px] overflow-y-auto whitespace-pre-wrap border-l-2 border-ai/40 pl-3 font-head text-sm leading-relaxed text-white/90"
             >
-              {out}
+              {result.content}
             </div>
           </div>
         )}
 
-        {!out && !error && !loading && (
+        {!result && !error && !loading && (
           <p className="text-xs leading-relaxed text-dim">
-            Generate a Claude-written intelligence brief grounded in the on-chain data
-            shown here. Switch modes for a desk-style analysis, a social post, or a
-            one-line alert.
+            Generate a data-grounded X/Twitter post about{" "}
+            <span className="text-white">{subject || "this view"}</span>. Pick a tone and
+            format, then hit generate.
           </p>
         )}
       </div>

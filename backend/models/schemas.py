@@ -1,4 +1,4 @@
-"""Pydantic response models for the SIGNAL API."""
+"""Pydantic schemas for the SIGNAL API."""
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 class StatusResponse(BaseModel):
     service: str = "SIGNAL"
     arkham: str  # "online" | "offline"
-    claude: bool
+    ai: bool
+    model: Optional[str] = None
     detail: Optional[str] = None
 
 
@@ -20,14 +21,15 @@ class EntityCatalog(BaseModel):
 
 
 class ContentRequest(BaseModel):
-    mode: str = Field("analysis", description="analysis | social | alert")
-    subject: str = Field(..., description="What the content is about")
-    data: Any = Field(None, description="Raw on-chain JSON context to ground the model")
-    tone: Optional[str] = None
+    data_type: str = Field("whale_transfer", description="whale_transfer | entity_profile | token_flow | trending")
+    raw_data: Any = Field(default_factory=dict, description="Actual Arkham response data to ground the model")
+    tone: str = Field("analyst", description="analyst | alpha_caller | degen")
+    output_type: str = Field("thread", description="thread | tweet | alert")
 
 
 class ContentResponse(BaseModel):
-    mode: str
-    subject: str
-    model: str
     content: str
+    tone: str
+    output_type: str
+    char_count: int
+    tweet_count: int

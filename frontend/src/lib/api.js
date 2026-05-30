@@ -1,38 +1,34 @@
 import axios from "axios";
 
 const BASE = process.env.REACT_APP_BACKEND_URL;
-const api = axios.create({ baseURL: `${BASE}/api`, timeout: 70000 });
+const api = axios.create({ baseURL: `${BASE}/api`, timeout: 95000 });
 
-export const getStatus = () => api.get("/status").then((r) => r.data);
-export const getCatalog = () => api.get("/intelligence/catalog").then((r) => r.data);
+// Backend returns graceful { error, detail } bodies (HTTP 200) for upstream
+// failures — surface them as thrown errors so views can show a clean message.
+const unwrap = (data) => {
+  if (data && typeof data === "object" && data.error) {
+    const e = new Error(data.detail || data.error);
+    e.code = data.error;
+    throw e;
+  }
+  return data;
+};
+const get = (url, params) => api.get(url, { params }).then((r) => unwrap(r.data));
 
-export const getEntity = (slug) =>
-  api.get(`/intelligence/entity/${slug}`).then((r) => r.data);
-export const getEntityBalances = (slug) =>
-  api.get(`/intelligence/entity/${slug}/balances`).then((r) => r.data);
-export const getCounterparties = (slug, timeLast = "30d") =>
-  api
-    .get(`/intelligence/entity/${slug}/counterparties`, { params: { timeLast } })
-    .then((r) => r.data);
+export const getStatus = () => get("/status");
+export const getCatalog = () => get("/intel/catalog");
 
-export const getAddress = (addr) =>
-  api.get(`/intelligence/address/${addr}`).then((r) => r.data);
-export const getAddressBalances = (addr) =>
-  api.get(`/intelligence/address/${addr}/balances`).then((r) => r.data);
+export const getEntity = (slug) => get(`/intel/entity/${slug}`);
+export const getAddress = (addr) => get(`/intel/address/${addr}`);
+export const resolveSearch = (query) => get("/intel/search", { query });
 
-export const resolveSearch = (query) =>
-  api.get("/intelligence/search", { params: { query } }).then((r) => r.data);
+export const getTransfers = (params) => get("/txns/transfers", params);
+export const getSwaps = (params) => get("/txns/swaps", params);
+export const getLarge = () => get("/txns/large");
 
-export const getTransfers = (params) =>
-  api.get("/transactions/transfers", { params }).then((r) => r.data);
-export const getSwaps = (params) =>
-  api.get("/transactions/swaps", { params }).then((r) => r.data);
-
-export const getTrending = () => api.get("/tokens/trending").then((r) => r.data);
-export const getHolders = (slug) =>
-  api.get(`/tokens/holders/${slug}`).then((r) => r.data);
-export const getFlow = (slug, timeLast = "24h") =>
-  api.get(`/tokens/flow/${slug}`, { params: { timeLast } }).then((r) => r.data);
+export const getTrending = () => get("/tokens/trending");
+export const getHolders = (slug) => get(`/tokens/holders/${slug}`);
+export const getFlow = (slug, time_last = "24h") => get(`/tokens/flow/${slug}`, { time_last });
 
 export const generateContent = (body) =>
   api.post("/content/generate", body).then((r) => r.data);

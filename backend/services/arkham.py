@@ -1,7 +1,8 @@
 """Async wrapper around the Arkham Intelligence REST API (https://api.arkm.com).
 
-All requests are GET with the `API-Key` header. Each method returns parsed JSON
-or raises a FastAPI HTTPException with a clear, debuggable message.
+All requests are GET with the `API-Key` header. On failure each method raises an
+`ArkhamError(status, message)` which routers convert to a graceful HTTP-200
+`{"error": ..., "detail": ...}` payload (per the SIGNAL route spec).
 
 NOTE: The original spec listed paths like `/intelligence/entity/arkham-signal`.
 Live probing confirmed the trailing path segment is actually the *entity slug*,
@@ -11,9 +12,31 @@ import asyncio
 from typing import Optional
 
 import httpx
-from fastapi import HTTPException
 
 from config import ARKHAM_BASE_URL, ARKHAM_HEADERS
+
+
+class ArkhamError(Exception):
+    """Carries the upstream HTTP status so routers can map it to a payload."""
+
+    def __init__(self, status: int, message: str):
+        self.status = status
+        self.message = message
+        super().__init__(f"{status}: {message}")
+
+
+def arkham_error_payload(exc: ArkhamError) -> dict:
+    """Map an ArkhamError to the spec's graceful (HTTP 200) error body."""
+    s = exc.status
+    if s == 403:
+        return {"error": "API tier limit", "detail": "upgrade Arkham plan"}
+    if s in (404, 400):
+        return {"error": "not found", "detail": exc.message}
+    if s in (504, 408):
+        return {"error": "timeout", "detail": "Arkham API slow, retry"}
+    if s == 429:
+        return {"error": "rate_limited", "detail": "Arkham rate limit, retry"}
+    return {"error": "upstream_error", "detail": exc.message}
 
 
 class ArkhamClient:
@@ -30,43 +53,38 @@ class ArkhamClient:
     ):
         """GET with a short retry/backoff for transient upstream failures.
 
-        Arkham occasionally returns 5xx / times out on heavy endpoints
-        (notably /swaps and /token/top_flow). Deterministic 4xx responses
-        (e.g. "entity not found") are surfaced immediately without retrying.
+        Deterministic 4xx responses (404/400 not-found) are surfaced
+        immediately; 5xx / timeouts / 429 are retried.
         """
         url = f"{self.base_url}{path}"
         print(f"[Arkham] GET {url} params={params}")
-        last_detail = f"Arkham API failed: {path}"
+        last = ArkhamError(502, f"Arkham API failed: {path}")
 
         for attempt in range(retries + 1):
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     resp = await client.get(url, headers=self.headers, params=params)
             except httpx.TimeoutException:
-                last_detail = f"Arkham API timed out: {path}"
+                last = ArkhamError(504, f"Arkham API timed out: {path}")
             except httpx.RequestError as exc:
-                last_detail = f"Arkham API connection error: {exc}"
+                last = ArkhamError(502, f"Arkham API connection error: {exc}")
             else:
                 if resp.status_code < 400:
                     try:
                         return resp.json()
                     except ValueError:
-                        raise HTTPException(
-                            status_code=502,
-                            detail=f"Arkham API returned non-JSON for {path}",
-                        )
+                        raise ArkhamError(502, f"Arkham API returned non-JSON for {path}")
                 message = self._extract_message(resp)
-                detail = f"Arkham API error {resp.status_code} for {path}: {message}"
-                # 4xx (except 429 rate-limit) are deterministic -> do not retry
+                # deterministic client errors -> do not retry
                 if resp.status_code < 500 and resp.status_code != 429:
-                    raise HTTPException(status_code=502, detail=detail)
-                last_detail = detail
+                    raise ArkhamError(resp.status_code, message)
+                last = ArkhamError(resp.status_code, message)
 
             if attempt < retries:
                 await asyncio.sleep(0.6 * (attempt + 1))
                 print(f"[Arkham] transient failure, retry {attempt + 1}/{retries} for {path}")
 
-        raise HTTPException(status_code=502, detail=last_detail)
+        raise last
 
     @staticmethod
     def _extract_message(resp) -> str:

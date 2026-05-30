@@ -19,7 +19,7 @@ export default function App() {
     const poll = () =>
       getStatus()
         .then(setStatus)
-        .catch(() => setStatus({ arkham: "offline", claude: false }));
+        .catch(() => setStatus({ arkham: "offline", ai: false }));
     poll();
     const id = setInterval(poll, 30000);
     return () => clearInterval(id);
@@ -30,7 +30,13 @@ export default function App() {
     setSearchError("");
     try {
       const res = await resolveSearch(q);
-      setTarget({ type: res.type, value: res.query });
+      const first = (res.results || [])[0];
+      if (!first) {
+        setSearchError(`No entity or address found for "${q}"`);
+        return;
+      }
+      const isAddr = first.type === "address";
+      setTarget({ type: isAddr ? "address" : "entity", value: isAddr ? first.address : first.entity_label });
       setTab("intelligence");
     } catch (e) {
       setSearchError(errMsg(e));

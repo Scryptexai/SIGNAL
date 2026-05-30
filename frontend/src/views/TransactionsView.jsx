@@ -2,10 +2,17 @@ import React, { useEffect, useState } from "react";
 import * as api from "../lib/api";
 import Panel from "../components/Panel";
 import AIPanel from "../components/AIPanel";
-import { usd, partyName, chainLabel, timeAgo } from "../lib/format";
+import { usd, chainLabel, timeAgo, shortAddr } from "../lib/format";
 import { WarningCircle, ArrowRight } from "@phosphor-icons/react";
 
-const TIME_WINDOWS = ["1h", "24h", "7d", "30d"];
+const TIME_WINDOWS = ["1h", "6h", "24h", "7d"];
+const MODES = [
+  { id: "whales", label: "Whales" },
+  { id: "transfers", label: "Transfers" },
+  { id: "swaps", label: "Swaps" },
+];
+
+const nameOf = (entity, label, address) => entity || label || shortAddr(address);
 
 function Select({ label, value, onChange, options, testid }) {
   return (
@@ -28,59 +35,53 @@ function Select({ label, value, onChange, options, testid }) {
 }
 
 export default function TransactionsView({ catalog }) {
-  const [mode, setMode] = useState("transfers");
+  const [mode, setMode] = useState("whales");
   const [base, setBase] = useState("binance");
-  const [chain, setChain] = useState("");
   const [timeLast, setTimeLast] = useState("24h");
-  const [usdGte, setUsdGte] = useState(1000000);
+  const [usdMin, setUsdMin] = useState(1000000);
   const [rows, setRows] = useState([]);
-  const [count, setCount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const entityOptions = catalog
     ? Object.values(catalog.entities).flat().map((s) => ({ value: s, label: s }))
     : [{ value: base, label: base }];
-  const chainOptions = [{ value: "", label: "All chains" }].concat(
-    (catalog?.chains || []).map((c) => ({ value: c, label: chainLabel(c) }))
-  );
 
   const fetchData = async (opts) => {
     setLoading(true);
     setError("");
     try {
-      if (opts.mode === "transfers") {
-        const d = await api.getTransfers({
-          base: opts.base,
-          chain: opts.chain || undefined,
-          timeLast: opts.timeLast,
-          usdGte: opts.usdGte,
+      let data;
+      if (opts.mode === "whales") {
+        data = await api.getLarge();
+        setRows(data.transfers || []);
+      } else if (opts.mode === "transfers") {
+        data = await api.getTransfers({
+          entity: opts.base,
+          time_last: opts.timeLast,
+          usd_min: opts.usdMin,
           limit: 25,
         });
-        setRows(d.transfers || []);
-        setCount(d.count);
+        setRows(data.transfers || []);
       } else {
-        const d = await api.getSwaps({
-          base: opts.base,
-          usdGte: Math.min(opts.usdGte, 100000),
-          timeLast: opts.timeLast,
+        data = await api.getSwaps({
+          entity: opts.base,
+          time_last: opts.timeLast,
+          usd_min: Math.min(opts.usdMin, 100000),
           limit: 25,
         });
-        setRows(d.swaps || []);
-        setCount(d.count);
+        setRows(data.swaps || []);
       }
     } catch (e) {
       setError(api.errMsg(e));
       setRows([]);
-      setCount(null);
     } finally {
       setLoading(false);
     }
   };
 
-  // initial load
   useEffect(() => {
-    fetchData({ mode, base, chain, timeLast, usdGte });
+    fetchData({ mode, base, timeLast, usdMin });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -88,147 +89,107 @@ export default function TransactionsView({ catalog }) {
     const nb = m === "swaps" ? "wintermute" : "binance";
     setMode(m);
     setBase(nb);
-    setChain("");
-    fetchData({ mode: m, base: nb, chain: "", timeLast, usdGte });
+    fetchData({ mode: m, base: nb, timeLast, usdMin });
   };
+  const runQuery = () => fetchData({ mode, base, timeLast, usdMin });
 
-  const runQuery = () => fetchData({ mode, base, chain, timeLast, usdGte });
+  const isSwaps = mode === "swaps";
+  const biggest = rows.reduce((a, b) => ((b.usd_value || 0) > (a?.usd_value || 0) ? b : a), null);
+  const aiData = isSwaps
+    ? biggest && {
+        from_entity: biggest.entity,
+        from_label: "DEX swap",
+        to_entity: `${biggest.from_token || "?"}→${biggest.to_token || "?"}`,
+        to_label: "",
+        usd_value: biggest.usd_value,
+        token_symbol: biggest.from_token,
+        chain: biggest.chain,
+        hash: biggest.hash,
+        timestamp: biggest.timestamp,
+      }
+    : biggest && {
+        from_entity: biggest.from_entity,
+        from_label: biggest.from_label,
+        to_entity: biggest.to_entity,
+        to_label: biggest.to_label,
+        usd_value: biggest.usd_value,
+        token_symbol: biggest.token_symbol,
+        chain: biggest.chain,
+        hash: biggest.hash,
+        timestamp: biggest.timestamp,
+      };
 
-  const aiData = {
-    mode,
-    base,
-    window: timeLast,
-    count,
-    rows: rows.slice(0, 10).map((r) =>
-      mode === "transfers"
-        ? {
-            usd: r.historicalUSD,
-            from: partyName(r.fromAddress),
-            to: partyName(r.toAddress),
-            chain: r.fromAddress?.chain || r.chain,
-          }
-        : {
-            usd: r.historicalUSD,
-            venue: partyName(r.contractAddress),
-            pair: `${r.token0Symbol || "?"}/${r.token1Symbol || "?"}`,
-            chain: r.chain,
-          }
-    ),
-  };
+  const subjectLabel = mode === "whales" ? "the biggest whale move" : `${base} ${mode}`;
 
   return (
     <div className="fade-in p-6">
-      <div className="mb-4 flex items-center gap-2">
-        {["transfers", "swaps"].map((m) => (
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {MODES.map((m) => (
           <button
-            key={m}
-            data-testid={`txn-tab-${m}`}
-            onClick={() => switchMode(m)}
+            key={m.id}
+            data-testid={`txn-tab-${m.id}`}
+            onClick={() => switchMode(m.id)}
             className={`border px-4 py-2 font-head text-sm font-semibold uppercase tracking-tight transition-colors duration-100 ${
-              mode === m
-                ? "border-primary bg-primary/10 text-white"
-                : "border-border text-dim hover:text-white"
+              mode === m.id ? "border-primary bg-primary/10 text-white" : "border-border text-dim hover:text-white"
             }`}
           >
-            {m}
+            {m.label}
           </button>
         ))}
         <div className="ml-auto text-xs text-dim">
-          {count !== null && !loading ? `${count} ${mode} returned` : ""}
+          {!loading && rows.length ? `showing ${rows.length} rows` : ""}
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap items-end gap-3 border border-border bg-surface p-4">
-        <Select
-          label={mode === "swaps" ? "Trading Entity" : "Base Entity"}
-          value={base}
-          onChange={setBase}
-          options={entityOptions}
-          testid="filter-base"
-        />
-        {mode === "transfers" && (
-          <Select label="Chain" value={chain} onChange={setChain} options={chainOptions} testid="filter-chain" />
-        )}
-        <Select
-          label="Window"
-          value={timeLast}
-          onChange={setTimeLast}
-          options={TIME_WINDOWS}
-          testid="filter-window"
-        />
-        <Select
-          label="Min USD"
-          value={String(usdGte)}
-          onChange={(v) => setUsdGte(Number(v))}
-          options={[
-            { value: "10000", label: "$10K" },
-            { value: "100000", label: "$100K" },
-            { value: "1000000", label: "$1M" },
-            { value: "10000000", label: "$10M" },
-          ]}
-          testid="filter-usd"
-        />
-        <button
-          data-testid="run-query-button"
-          onClick={runQuery}
-          disabled={loading}
-          className="border border-primary bg-primary px-5 py-2 font-head text-sm font-semibold tracking-tight text-white hover:bg-[#005bb5] disabled:opacity-50"
-        >
-          {loading ? "QUERYING…" : "RUN QUERY"}
-        </button>
-      </div>
+      {mode !== "whales" ? (
+        <div className="mb-4 flex flex-wrap items-end gap-3 border border-border bg-surface p-4">
+          <Select label={isSwaps ? "Trading Entity" : "Base Entity"} value={base} onChange={setBase} options={entityOptions} testid="filter-base" />
+          <Select label="Window" value={timeLast} onChange={setTimeLast} options={TIME_WINDOWS} testid="filter-window" />
+          <Select
+            label="Min USD"
+            value={String(usdMin)}
+            onChange={(v) => setUsdMin(Number(v))}
+            options={[
+              { value: "10000", label: "$10K" },
+              { value: "100000", label: "$100K" },
+              { value: "1000000", label: "$1M" },
+              { value: "10000000", label: "$10M" },
+            ]}
+            testid="filter-usd"
+          />
+          <button
+            data-testid="run-query-button"
+            onClick={runQuery}
+            disabled={loading}
+            className="border border-primary bg-primary px-5 py-2 font-head text-sm font-semibold tracking-tight text-white hover:bg-[#005bb5] disabled:opacity-50"
+          >
+            {loading ? "QUERYING…" : "RUN QUERY"}
+          </button>
+        </div>
+      ) : (
+        <div className="mb-4 border border-warn/30 bg-warn/5 px-4 py-2.5 text-xs text-warn">
+          Live whale feed — all transfers above <span className="font-semibold">$500K</span> in the last 24h, across every tracked chain.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="lg:col-span-8">
           <Panel
-            title={mode === "transfers" ? "Large Transfers" : "DEX Swaps"}
-            sub={`${base} · ${timeLast}`}
+            title={mode === "whales" ? "Whale Alert Feed" : mode === "transfers" ? "Large Transfers" : "DEX Swaps"}
+            sub={mode === "whales" ? ">$500K · 24h" : `${base} · ${timeLast}`}
           >
             {error ? (
-              <div
-                data-testid="txn-error"
-                className="border border-warn/40 bg-warn/10 p-3 text-xs text-warn"
-              >
+              <div data-testid="txn-error" className="border border-warn/40 bg-warn/10 p-3 text-xs text-warn">
                 <div className="flex items-center gap-2 font-semibold">
                   <WarningCircle size={14} weight="fill" /> Feed temporarily unavailable
                 </div>
-                <div className="mt-1 text-dim">
-                  Arkham upstream hiccupped for these filters. Press RUN QUERY to retry.
-                </div>
+                <div className="mt-1 text-dim">{error}. Press RUN QUERY to retry.</div>
               </div>
             ) : loading ? (
               <p className="text-xs text-dim">Loading feed…</p>
             ) : rows.length === 0 ? (
               <p className="text-xs text-dim">No {mode} matched these filters.</p>
-            ) : mode === "transfers" ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm" data-testid="transfers-table">
-                  <thead>
-                    <tr className="text-left text-[10px] uppercase tracking-wider text-dim">
-                      <th className="pb-2 font-normal">Age</th>
-                      <th className="pb-2 font-normal">From</th>
-                      <th className="pb-2 font-normal"></th>
-                      <th className="pb-2 font-normal">To</th>
-                      <th className="pb-2 font-normal">Chain</th>
-                      <th className="pb-2 text-right font-normal">USD</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((t, i) => (
-                      <tr key={t.id || i} className="border-t border-border/60 hover:bg-surfaceHover">
-                        <td className="py-1.5 font-mono text-xs text-dim">{timeAgo(t.blockTimestamp)}</td>
-                        <td className="py-1.5 text-white">{partyName(t.fromAddress)}</td>
-                        <td className="py-1.5 text-dim"><ArrowRight size={12} /></td>
-                        <td className="py-1.5 text-white">{partyName(t.toAddress)}</td>
-                        <td className="py-1.5 text-xs text-dim">{chainLabel(t.fromAddress?.chain || t.chain)}</td>
-                        <td className="py-1.5 text-right font-mono text-pos">{usd(t.historicalUSD)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
+            ) : isSwaps ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm" data-testid="swaps-table">
                   <thead>
@@ -242,14 +203,41 @@ export default function TransactionsView({ catalog }) {
                   </thead>
                   <tbody>
                     {rows.map((s, i) => (
-                      <tr key={s.id || i} className="border-t border-border/60 hover:bg-surfaceHover">
-                        <td className="py-1.5 font-mono text-xs text-dim">{timeAgo(s.blockTimestamp)}</td>
-                        <td className="py-1.5 text-white">{partyName(s.contractAddress)}</td>
-                        <td className="py-1.5 text-xs text-ai">
-                          {s.token0Symbol || "?"}/{s.token1Symbol || "?"}
-                        </td>
+                      <tr key={s.hash || i} className="border-t border-border/60 hover:bg-surfaceHover">
+                        <td className="py-1.5 font-mono text-xs text-dim">{timeAgo(s.timestamp)}</td>
+                        <td className="py-1.5 text-white">{s.entity || "—"}</td>
+                        <td className="py-1.5 text-xs text-ai">{s.from_token || "?"}/{s.to_token || "?"}</td>
                         <td className="py-1.5 text-xs text-dim">{chainLabel(s.chain)}</td>
-                        <td className="py-1.5 text-right font-mono text-white">{usd(s.historicalUSD)}</td>
+                        <td className="py-1.5 text-right font-mono text-white">{usd(s.usd_value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" data-testid="transfers-table">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wider text-dim">
+                      <th className="pb-2 font-normal">Age</th>
+                      <th className="pb-2 font-normal">From</th>
+                      <th className="pb-2 font-normal"></th>
+                      <th className="pb-2 font-normal">To</th>
+                      <th className="pb-2 font-normal">Token</th>
+                      <th className="pb-2 font-normal">Chain</th>
+                      <th className="pb-2 text-right font-normal">USD</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((t, i) => (
+                      <tr key={t.hash || i} className="border-t border-border/60 hover:bg-surfaceHover">
+                        <td className="py-1.5 font-mono text-xs text-dim">{timeAgo(t.timestamp)}</td>
+                        <td className="py-1.5 text-white">{nameOf(t.from_entity, t.from_label, t.from_address)}</td>
+                        <td className="py-1.5 text-dim"><ArrowRight size={12} /></td>
+                        <td className="py-1.5 text-white">{nameOf(t.to_entity, t.to_label, t.to_address)}</td>
+                        <td className="py-1.5 text-xs text-ai">{t.token_symbol || "—"}</td>
+                        <td className="py-1.5 text-xs text-dim">{chainLabel(t.chain)}</td>
+                        <td className="py-1.5 text-right font-mono text-pos">{usd(t.usd_value)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -259,7 +247,7 @@ export default function TransactionsView({ catalog }) {
           </Panel>
         </div>
         <div className="lg:col-span-4">
-          <AIPanel subject={`${base} ${mode}`} data={aiData} disabled={loading || rows.length === 0} />
+          <AIPanel dataType="whale_transfer" rawData={aiData || {}} subject={subjectLabel} disabled={loading || !biggest} />
         </div>
       </div>
     </div>

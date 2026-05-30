@@ -1,4 +1,4 @@
-"""Entity + address intelligence routes."""
+"""Entity + address intelligence routes (prefix /intel)."""
 from fastapi import APIRouter
 
 from config import (
@@ -9,9 +9,11 @@ from config import (
     TOKEN_SLUGS,
 )
 from models.schemas import EntityCatalog
-from services.arkham import arkham
+from services.arkham import ArkhamError, arkham, arkham_error_payload
 
-router = APIRouter(prefix="/intelligence", tags=["intelligence"])
+router = APIRouter(prefix="/intel", tags=["intelligence"])
+
+ALL_SLUGS = [s for group in ENTITY_SLUGS.values() for s in group]
 
 
 @router.get("/catalog", response_model=EntityCatalog)
@@ -26,33 +28,37 @@ async def catalog():
     )
 
 
+async def _safe(coro):
+    try:
+        return await coro
+    except ArkhamError:
+        return None
+
+
 @router.get("/entity/{slug}")
 async def entity(slug: str):
-    return await arkham.get_entity(slug)
-
-
-@router.get("/entity/{slug}/balances")
-async def entity_balances(slug: str):
-    return await arkham.get_entity_balances(slug)
-
-
-@router.get("/entity/{slug}/counterparties")
-async def entity_counterparties(slug: str, timeLast: str = "30d"):
-    return await arkham.get_counterparties(slug, timeLast)
+    """Combined entity intel: { entity, balances, counterparties }."""
+    try:
+        ent = await arkham.get_entity(slug)
+    except ArkhamError as exc:
+        return arkham_error_payload(exc)
+    balances = await _safe(arkham.get_entity_balances(slug))
+    counterparties = await _safe(arkham.get_counterparties(slug, "7d"))
+    return {"entity": ent, "balances": balances, "counterparties": counterparties}
 
 
 @router.get("/address/{address}")
 async def address(address: str):
-    return await arkham.get_address(address)
+    """Combined address intel: { profile, balances }."""
+    try:
+        profile = await arkham.get_address(address)
+    except ArkhamError as exc:
+        return arkham_error_payload(exc)
+    balances = await _safe(arkham.get_address_balances(address))
+    return {"profile": profile, "balances": balances}
 
 
-@router.get("/address/{address}/balances")
-async def address_balances(address: str):
-    return await arkham.get_address_balances(address)
-
-
-def _looks_like_address(q: str) -> bool:
-    q = q.strip()
+def _is_address(q: str) -> bool:
     if q.startswith("0x") and len(q) >= 40:
         return True
     if q.startswith(("bc1", "1", "3")) and len(q) >= 26:
@@ -61,14 +67,50 @@ def _looks_like_address(q: str) -> bool:
 
 
 @router.get("/search")
-async def smart_search(query: str):
-    """Resolve a free-text query to an entity or an address.
+async def search(query: str):
+    """Resolve a query to entities/addresses.
 
-    The upstream `/search` endpoint is restricted for this API key, so we
-    resolve locally: address-looking input -> address intel, otherwise we try
-    the value as an entity slug.
+    Upstream /search is restricted for this key, so we resolve locally and
+    return a normalized list: [{ name, type, address, entity_label }].
     """
     q = query.strip()
-    if _looks_like_address(q):
-        return {"type": "address", "query": q, "result": await arkham.get_address(q)}
-    return {"type": "entity", "query": q, "result": await arkham.get_entity(q.lower())}
+    results = []
+
+    if _is_address(q):
+        try:
+            prof = await arkham.get_address(q)
+            ent = (prof.get("arkhamEntity") or {})
+            lab = (prof.get("arkhamLabel") or {})
+            results.append({
+                "name": ent.get("name") or lab.get("name") or q,
+                "type": "address",
+                "address": q,
+                "entity_label": lab.get("name") or ent.get("name"),
+            })
+        except ArkhamError:
+            pass
+        return {"query": q, "results": results}
+
+    ql = q.lower()
+    # exact / direct entity lookup first
+    try:
+        ent = await arkham.get_entity(ql)
+        results.append({
+            "name": ent.get("name") or ql,
+            "type": ent.get("type") or "entity",
+            "address": "",
+            "entity_label": ql,
+        })
+    except ArkhamError:
+        pass
+    # fuzzy matches from the curated catalog
+    for slug in ALL_SLUGS:
+        if ql in slug and slug != ql:
+            results.append({
+                "name": slug,
+                "type": "entity",
+                "address": "",
+                "entity_label": slug,
+            })
+
+    return {"query": q, "results": results}
